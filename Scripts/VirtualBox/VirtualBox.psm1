@@ -74,8 +74,8 @@ function Get-VirtualBoxVM
         [string]$ModifyVM
     )
 
-    if (!(VBoxManage.exe)) {
-        Write-Host "Set path to VBoxManage.exe."
+    if (!(VBoxManage)) {
+        Write-Output "Set path to VBoxManage."
         return 3
     }#if
 
@@ -86,7 +86,7 @@ function Get-VirtualBoxVM
     if ($Name.Contains("*")){
 
         $aVirtualBoxVM = @()
-        $aVMList = [array](VBoxManage.exe list vms | Where-Object {($_ -replace """" -replace " {.*") -like $Name})
+        $aVMList = [array](VBoxManage list vms | Where-Object {($_ -replace """" -replace " {.*") -like $Name})
         $aVMList | ForEach-Object {
 
             $sVMEntry = $_
@@ -101,23 +101,23 @@ function Get-VirtualBoxVM
     } else {
 
         if ($PowerOn) {
-            Write-Host (VBoxManage.exe startvm $Name --type headless)
+            Write-Output (VBoxManage startvm $Name --type headless)
         } elseif ($ShowConsole) {
-            Write-Host (VBoxManage.exe startvm $Name --type separate)
+            Write-Output (VBoxManage startvm $Name --type separate)
         } elseif ($PowerOff) {
-            Write-Host "Powering off VM ""$Name""."
-            VBoxManage.exe controlvm $Name poweroff
+            Write-Output "Powering off VM ""$Name""."
+            VBoxManage controlvm $Name poweroff
         } elseif ($ShutDown) {
-            Write-Host "Shutting down VM ""$Name""."
-            VBoxManage.exe controlvm $Name acpipowerbutton
+            Write-Output "Shutting down VM ""$Name""."
+            VBoxManage controlvm $Name acpipowerbutton
         } elseif ($GetExtraData) {
-            return VBoxManage.exe getextradata $Name $ExtraDataKey
+            return VBoxManage getextradata $Name $ExtraDataKey
         } elseif ($SetExtraData) {
-            return VBoxManage.exe setextradata $Name $ExtraDataKey $ExtraDataValue
+            return VBoxManage setextradata $Name $ExtraDataKey $ExtraDataValue
         } elseif ($ModifyVM) {
             $vboxmanage = New-Object System.Diagnostics.Process
             $psi = New-Object System.Diagnostics.ProcessStartInfo
-            $psi.FileName = "VBoxManage.exe"
+            $psi.FileName = "VBoxManage"
             $psi.Arguments = $ModifyVM
             $psi.CreateNoWindow = $true
             $vboxmanage.StartInfo = $psi
@@ -125,7 +125,7 @@ function Get-VirtualBoxVM
             $vboxmanage.WaitForExit()
         }#if
 
-        $aVMInfo = VBoxManage.exe showvminfo $Name
+        $aVMInfo = VBoxManage showvminfo $Name
         $vm = New-VirtualBoxVMObject $aVMInfo
         
         return $vm
@@ -224,7 +224,8 @@ function Invoke-VirtualBoxVMProcess
     if ($Uuid) { $Name = $Uuid }
     
     if (!$Credential) {
-        $sUserName = $env:USERNAME
+        $sUserName = $env:USERNAME 
+        if (!$sUserName) { $sUserName = $env:LOGNAME }
         $secPassword = Read-Host "Password for [$sUserName]" -AsSecureString
         $Credential = New-Object pscredential($sUserName,$secPassword)
     }#if
@@ -248,8 +249,8 @@ function Invoke-VirtualBoxVMProcess
         } -ArgumentList $Name,$PathToExecutable,$Arguments,$Credential
 
     } else {
-
-        return VBoxManage.exe guestcontrol $Name --username $Credential.UserName --password $usPassword run --exe $PathToExecutable -- $PathToExecutable $Arguments
+        Write-Output $Arguments
+        return VBoxManage guestcontrol $Name --username $Credential.UserName --password $usPassword run --exe $PathToExecutable -- $Arguments
 
     }#if
 }
@@ -277,6 +278,7 @@ function Submit-VirtualBoxVMProcess
 
     if (!$Credential) {
         $sUserName = $env:USERNAME
+        if (!$sUserName) { $sUserName = $env:LOGNAME }
         $secPassword = Read-Host "Password for [$sUserName]" -AsSecureString
         $Credential = New-Object pscredential($sUserName,$secPassword)
     }#if
@@ -301,17 +303,24 @@ function Invoke-VirtualBoxVMPowerShellScript
         [Parameter(Mandatory=$false)]
         [switch]$AsJob
     )
+    
+    if ([System.Environment]::OSVersion.Platform -eq 'Win32NT')
+    {
+        $cmd="cmd.exe"
+        $cmd_args="/c powershell -command".Split(" ")
+    } else {
+        $cmd="sh"
+        $cmd_args="-c pwsh -command".Split(" ")
+    }
 
     if ($VirtualBoxVM) { $Name = $VirtualBoxVM.Name }
     if ($Uuid) { $Name = $Uuid }
 
     if ($AsJob) {
-
-        return Invoke-VirtualBoxVMProcess -Name $Name -PathToExecutable "cmd.exe" -Arguments "/c","powershell","-command",$ScriptBlock -Credential $Credential -AsJob
+        return Invoke-VirtualBoxVMProcess -Name $Name -PathToExecutable $cmd -Arguments $cmd_args,$ScriptBlock -Credential $Credential -AsJob
 
     } else {
-
-        return Invoke-VirtualBoxVMProcess -Name $Name -PathToExecutable "cmd.exe" -Arguments "/c","powershell","-command",$ScriptBlock -Credential $Credential
+        return Invoke-VirtualBoxVMProcess -Name $Name -PathToExecutable $cmd -Arguments $cmd_args,$ScriptBlock -Credential $Credential
 
     }#if
     
